@@ -13,7 +13,7 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>simple-hello-surjan</artifactId>
+    <artifactId>simple-hello-rakesh</artifactId>
     <version>1.0.0</version>
 
     <properties>
@@ -28,7 +28,7 @@
     </dependencies>
 
     <build>
-        <plugins>
+           <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
