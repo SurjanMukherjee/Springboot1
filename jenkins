@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout'){
             steps{
-                git branch: 'main', credentialsId: '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', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
+                git branch: 'main', credentialsId: 'git_token', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
                 sh 'ls -la'
             }
         }
