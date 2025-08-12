@@ -1,0 +1,6 @@
+projectKey=hello-springboot-surjan
+serverUrl=http://3.111.168.72:9000
+serverVersion=10.6.0.92116
+dashboardUrl=http://3.111.168.72:9000/dashboard?id=hello-springboot-surjan
+ceTaskId=6571e441-141a-4cdf-bc13-de2812f6dc80
+ceTaskUrl=http://3.111.168.72:9000/api/ce/task?id=6571e441-141a-4cdf-bc13-de2812f6dc80
