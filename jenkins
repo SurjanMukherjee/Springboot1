@@ -33,7 +33,7 @@ pipeline {
                 sh '''
                 mvn sonar:sonar \
                   -Dsonar.projectKey=springboot-demo \
-                  -Dsonar.host.url=http://3.82.143.93:9000/projects/create \
+                  -Dsonar.host.url=http://3.82.143.93:9000/projects \
                   -Dsonar.login=$SONARQUBE_TOKEN
                 '''
             }
