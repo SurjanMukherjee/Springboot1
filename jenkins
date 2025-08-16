@@ -1,16 +1,20 @@
 pipeline {
     agent any
+
+    triggers {
+        githubPush()
+    }
     tools{
         maven 'maven'
     }
     environment {
-        SONARQUBE_URL = 'https://d6312cd2eccd.ngrok-free.app/projects'
-        SONARQUBE_TOKEN = credentials ('Sonarqube_token')
+        SONARQUBE_URL = 'http://3.82.143.93:9000/projects/create'
+        SONARQUBE_TOKEN = credentials ('Sonar_token')
     }
     stages {
         stage('Checkout'){
             steps{
-                git branch: 'main', credentialsId: 'git_token', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
+                git branch: 'main', credentialsId: 'github_token', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
                 sh 'ls -la'
             }
         }
@@ -31,6 +35,13 @@ pipeline {
                   -Dsonar.projectKey=springboot-demo \
                   -Dsonar.host.url=https://d6312cd2eccd.ngrok-free.app \
                   -Dsonar.login=$SONARQUBE_TOKEN
+                '''
+            }
+        }
+        stage('Deploy'){
+            steps{
+                sh '''
+                nohup java -jar target/simple-hello-surjan-1.0.0.jar --server.port=9000 > app.log 2>&1 &
                 '''
             }
         }
