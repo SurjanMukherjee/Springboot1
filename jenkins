@@ -4,30 +4,36 @@ pipeline {
     triggers {
         githubPush()
     }
-    tools{
+
+    tools {
         maven 'maven'
     }
+
     environment {
-        SONARQUBE_URL = 'http://3.82.143.93:9000/projects/create'
-        SONARQUBE_TOKEN = credentials ('Sonar_token')
+        SONARQUBE_URL = 'http://3.82.143.93:9000'
+        SONARQUBE_TOKEN = credentials('Sonar_token')
     }
+
     stages {
-        stage('Checkout'){
-            steps{
+        stage('Checkout') {
+            steps {
                 git branch: 'main', credentialsId: 'github_token', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
                 sh 'ls -la'
             }
         }
-        stage('Build'){
-            steps{
+
+        stage('Build') {
+            steps {
                 sh 'mvn clean install'
             }
         }
-        stage('Package'){
-            steps{
+
+        stage('Package') {
+            steps {
                 sh 'mvn package'
             }
         }
+
         stage('SonarQube Analysis') {
             steps {
                 sh """
@@ -38,11 +44,12 @@ pipeline {
                 """
             }
         }
-        stage('Deploy'){
-            steps{
-                sh '''
-                nohup java -jar target/simple-hello-surjan-1.0.0.jar --server.port=9000 > app.log 2>&1 &
-                '''
+
+        stage('Deploy') {
+            steps {
+                sh """
+                nohup java -jar target/simple-surjan-hello-1.0.0.jar --server.port=9000 > app.log 2>&1 &
+                """
             }
         }
     }
