@@ -10,8 +10,8 @@ pipeline {
     }
 
     environment {
-        SONARQUBE_URL = 'http://3.82.143.93:9000'
-        SONARQUBE_TOKEN = credentials('Sonar_token')
+        SONARQUBE_URL = 'http://35.178.183.118:9000'
+        SONARQUBE_TOKEN = credentials('Sonar-token')
     }
 
     stages {
