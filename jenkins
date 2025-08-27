@@ -1,56 +1,587 @@
-pipeline {
-    agent any
+TASK 1 — Clone / prepare the GitHub repository (exactly like exam)
 
-    triggers {
-        githubPush()
+In your web browser go to the source repo shown in the photo:
+
+# Clone the given project
+git clone https://github.com/akshu20791/addressbook-cicd-project
+
+# Enter project directory
+cd addressbook-cicd-project
+
+# Create your own GitHub repo and push code
+git remote remove origin
+git remote add origin https://github.com/<your-username>/addressbook-cicd-project.git
+git branch -M main
+git push -u origin main
+
+
+Screenshot to take for deliverables: GitHub page of your fork (showing your username and repo name) and a terminal screenshot showing git remote -v and git branch -a.
+
+TASK 2 — Create the repository structure and initial files (what to add to your fork)
+
+Create this folder structure in the repo root (use VS Code):
+
+surjan-addressbook-cicd-project/
+├─ terraform/
+│  ├─ main.tf
+│  ├─ provider.tf
+│  ├─ variables.tf
+│  ├─ outputs.tf
+│  └─ versions.tf
+├─ ansible/
+│  ├─ inventories/
+│  │  └─ hosts.ini
+│  ├─ playbooks/
+│  │  ├─ install_tomcat.yml
+│  │  └─ deploy_war.yml
+│  └─ files/   (optional, put any static files/wars for testing)
+├─ Jenkinsfile
+├─ README.md
+└─ .gitignore
+
+
+Create a short README.md describing what will be inside. Add .gitignore for .terraform, target/, *.pem (make sure you do NOT commit your real key). Commit and push:
+
+git add .
+git commit -m "Add terraform/ansible skeleton, Jenkinsfile placeholder"
+git push
+
+
+Screenshot to take: repo file-tree in GitHub (show terraform/, ansible/, Jenkinsfile present).
+
+TASK 3 — Terraform: provision the AWS infra (this has subparts)
+Task 3a — Plan what Terraform will create
+
+You need:
+
+A security group allowing SSH (22), Jenkins (8080), Tomcat (8080 or 8081 if you prefer) and ephemeral outbound.
+
+Two t2.micro EC2 instances:
+
+surjan-jenkins-master (Jenkins server)
+
+surjan-app-node (Tomcat / application node)
+
+Use the existing manual key pair you will create in the console (name surjan-key) — Terraform will reference it by key_name (it will not create the key).
+
+Region: eu-west-2.
+
+Task 3b — Terraform code (copy these files exactly into terraform/)
+versions.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
     }
-
-    tools {
-        maven 'maven'
-    }
-
-    environment {
-        SONARQUBE_URL = 'http://35.178.183.118:9000'
-        SONARQUBE_TOKEN = credentials('Sonar-token')
-    }
-
-    stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', credentialsId: 'github_token', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
-                sh 'ls -la'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean install'
-            }
-        }
-
-        stage('Package') {
-            steps {
-                sh 'mvn package'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                sh """
-                mvn sonar:sonar \
-                  -Dsonar.projectKey=springboot-demo \
-                  -Dsonar.host.url=$SONARQUBE_URL \
-                  -Dsonar.login=$SONARQUBE_TOKEN
-                """
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                sh """
-                nohup java -jar target/simple-surjan-hello-1.0.0.jar --server.port=9000 > app.log 2>&1 &
-                """
-            }
-        }
-    }
+  }
+  required_version = ">= 1.0"
 }
+
+provider.tf
+provider "aws" {
+  region = var.aws_region
+}
+
+variables.tf
+variable "aws_region" {
+  type    = string
+  default = "eu-west-2"
+}
+
+variable "key_name" {
+  type    = string
+  default = "surjan-key"
+}
+
+variable "instance_type" {
+  type    = string
+  default = "t2.micro"
+}
+
+variable "ssh_cidr" {
+  description = "CIDR allowed to SSH (set to 0.0.0.0/0 for exam if you must; safer: your IP)"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
+main.tf
+# Use Canonical's owner and pick latest Ubuntu Jammy 22.04
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]   # Canonical owner – ensures official Ubuntu images.
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+}
+
+# Use the default VPC and first public subnet
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnet_ids" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
+resource "aws_security_group" "surjan_sg" {
+  name        = "surjan-sg"
+  description = "allow SSH, Jenkins, Tomcat"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_cidr]
+  }
+
+  ingress {
+    description = "Jenkins (HTTP)"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Tomcat"
+    from_port   = 8081
+    to_port     = 8081
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "surjan-sg"
+  }
+}
+
+resource "aws_instance" "jenkins_master" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = data.aws_subnet_ids.default.ids[0]
+  key_name               = var.key_name
+  vpc_security_group_ids = [aws_security_group.surjan_sg.id]
+
+  tags = {
+    Name = "surjan-jenkins-master"
+  }
+}
+
+resource "aws_instance" "app_node" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = data.aws_subnet_ids.default.ids[0]
+  key_name               = var.key_name
+  vpc_security_group_ids = [aws_security_group.surjan_sg.id]
+
+  tags = {
+    Name = "surjan-app-node"
+  }
+}
+
+outputs.tf
+output "jenkins_master_public_ip" {
+  value = aws_instance.jenkins_master.public_ip
+}
+
+output "app_node_public_ip" {
+  value = aws_instance.app_node.public_ip
+}
+
+output "security_group_id" {
+  value = aws_security_group.surjan_sg.id
+}
+
+
+Notes:
+
+The data.aws_ami approach uses Canonical’s account ID (099720109477) so you get official Ubuntu Jammy images and not a third-party AMI. This is the recommended pattern; it avoids hardcoding an AMI id which changes per region. 
+Ubuntu Documentation
+Terraform Registry
+
+How to run Terraform (Windows CMD or VS Code terminal)
+
+Open VS Code terminal in repo surjan-addressbook-cicd-project\terraform.
+
+Initialize, plan and apply:
+
+terraform init
+terraform plan -out=plan.tfplan
+terraform apply "plan.tfplan"
+
+
+If you prefer non-interactive:
+
+terraform apply -auto-approve
+
+
+After apply finishes, copy the jenkins_master_public_ip and app_node_public_ip (or terraform output).
+
+Screenshot to take: terminal showing terraform apply success and the outputs (public IPs).
+
+TASK 4 — Create the EC2 keypair manually (you asked to create manually and save to Downloads)
+
+In AWS Console → EC2 → Key pairs → Create key pair.
+
+Name: surjan-key
+
+File format: .pem
+
+Save the downloaded file to Downloads as surjan-key.pem
+
+Secure the key on Windows:
+
+If you have Git Bash / WSL: run
+
+chmod 400 ~/Downloads/surjan-key.pem
+
+
+If using PowerShell, restrict access (example):
+
+$path = "$env:USERPROFILE\Downloads\surjan-key.pem"
+icacls $path /inheritance:r
+icacls $path /grant:r "$($env:USERNAME):(R)"
+
+
+Confirm you can SSH (example uses the variable IP you got from Terraform):
+
+ssh -i "%USERPROFILE%\Downloads\surjan-key.pem" ubuntu@<JENKINS_MASTER_PUBLIC_IP>
+
+
+If Windows complains about permissions you can temporarily use Git Bash or the Windows OpenSSH client (Windows 10/11 includes it).
+
+Screenshot to take: SSH session showing you on the Jenkins master ubuntu@....
+
+TASK 5 — Install Jenkins on the Jenkins Master and prepare for pipeline
+
+SSH to Jenkins master:
+
+ssh -i "%USERPROFILE%\Downloads\surjan-key.pem" ubuntu@<JENKINS_MASTER_PUBLIC_IP>
+
+
+On the instance run these commands (Ubuntu Jammy):
+
+sudo apt update -y
+sudo apt install -y openjdk-17-jdk
+# Add Jenkins official repo and install
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.asc
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list
+sudo apt update -y
+sudo apt install -y jenkins git maven ansible
+sudo systemctl enable --now jenkins
+
+
+Reference for Jenkins install steps: Jenkins official docs. 
+Jenkins
+
+Open Jenkins in your browser:
+
+http://<JENKINS_MASTER_PUBLIC_IP>:8080
+
+Unlock Jenkins using the initial admin password:
+
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+
+
+Install suggested plugins, create admin user surjan (or another user) when Jenkins setup asks.
+
+On Jenkins server create ~/.ssh for the Jenkins user and put your private key there (so Jenkins can reach other nodes via SSH or run Ansible):
+
+sudo su - jenkins
+mkdir -p ~/.ssh
+# copy your surjan-key.pem content into /var/lib/jenkins/.ssh/surjan-key.pem using an editor (vim/nano) or scp
+chmod 600 ~/.ssh/surjan-key.pem
+
+
+Install Jenkins plugins recommended: Git Plugin, Pipeline, Ansible plugin (optional if you run ansible via shell), SSH Agent plugin.
+
+TASK 6 — Ansible playbooks and inventory (install Tomcat + deploy WAR)
+
+Create ansible/inventories/hosts.ini:
+
+[app]
+<APP_NODE_PUBLIC_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/Downloads/surjan-key.pem
+
+ansible/playbooks/install_tomcat.yml
+- name: Install Java and Tomcat on app node
+  hosts: app
+  become: yes
+  tasks:
+    - name: Update APT
+      apt:
+        update_cache: yes
+
+    - name: Install default-jdk and unzip
+      apt:
+        name:
+          - default-jdk
+          - unzip
+        state: present
+
+    - name: Create tomcat directory
+      file:
+        path: /opt/tomcat
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Download Tomcat 9
+      get_url:
+        url: "https://downloads.apache.org/tomcat/tomcat-9/v9.0.65/bin/apache-tomcat-9.0.65.tar.gz"
+        dest: /tmp/tomcat9.tar.gz
+      # (You can update the version number; official downloads: tomcat.apache.org). 
+      # See Tomcat downloads page for latest 9.x. :contentReference[oaicite:4]{index=4}
+
+    - name: Extract Tomcat
+      unarchive:
+        src: /tmp/tomcat9.tar.gz
+        dest: /opt/tomcat
+        remote_src: yes
+        creates: /opt/tomcat/apache-tomcat-9.0.65
+
+    - name: Create symlink to tomcat
+      file:
+        src: /opt/tomcat/apache-tomcat-9.0.65
+        dest: /opt/tomcat/latest
+        state: link
+
+    - name: Start Tomcat
+      shell: "nohup /opt/tomcat/latest/bin/startup.sh >/dev/null 2>&1 &"
+      args:
+        creates: /opt/tomcat/latest/bin/startup.sh
+
+ansible/playbooks/deploy_war.yml
+- name: Deploy application WAR to Tomcat
+  hosts: app
+  become: yes
+  tasks:
+    - name: Ensure webapps directory exists
+      file:
+        path: /opt/tomcat/latest/webapps
+        state: directory
+
+    - name: Copy WAR from Jenkins workspace to app node (example path)
+      copy:
+        src: /var/lib/jenkins/workspace/surjan-addressbook-cicd-project/target/*.war
+        dest: /opt/tomcat/latest/webapps/
+        mode: '0644'
+
+    - name: Restart Tomcat
+      shell: "/opt/tomcat/latest/bin/shutdown.sh || true; sleep 3; /opt/tomcat/latest/bin/startup.sh"
+
+
+How you will run Ansible from Jenkins: place the hosts.ini and playbooks on the Jenkins server (or keep them in repo and checkout during pipeline). From the Jenkins master you can run:
+
+ansible-playbook -i /var/lib/jenkins/workspace/<job-name>/ansible/inventories/hosts.ini /var/lib/jenkins/workspace/<job-name>/ansible/playbooks/install_tomcat.yml --private-key /var/lib/jenkins/.ssh/surjan-key.pem -u ubuntu
+ansible-playbook -i ... deploy_war.yml --private-key ...
+
+
+(If you use the Jenkins Ansible plugin, there is a step ansiblePlaybook you can use instead.)
+
+Screenshot to take: Ansible run logs showing Tomcat install finished and the WAR file copied.
+
+TASK 7 — Jenkins pipeline (Jenkinsfile) and GitHub webhook
+
+Place this Jenkinsfile in repo root (replace <github-user> with your GitHub username):
+
+pipeline {
+  agent any
+  environment {
+    SSH_KEY = '/var/lib/jenkins/.ssh/surjan-key.pem'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main', url: 'https://github.com/<github-user>/surjan-addressbook-cicd-project.git'
+      }
+    }
+    stage('Build') {
+      steps {
+        sh 'mvn -B -DskipTests=false clean package'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+        }
+      }
+    }
+    stage('Install Tomcat on App Node') {
+      steps {
+        sh "ansible-playbook -i ansible/inventories/hosts.ini ansible/playbooks/install_tomcat.yml --private-key ${SSH_KEY} -u ubuntu"
+      }
+    }
+    stage('Deploy to Tomcat') {
+      steps {
+        sh "ansible-playbook -i ansible/inventories/hosts.ini ansible/playbooks/deploy_war.yml --private-key ${SSH_KEY} -u ubuntu"
+      }
+    }
+  }
+}
+
+
+Jenkins job setup:
+
+Create a Pipeline job in Jenkins.
+
+Under Pipeline → Definition choose Pipeline script from SCM or use the file from repo.
+
+If Pipeline uses GitHub, configure repository URL and credentials.
+
+Create Credentials > SSH Username with private key (or place the PEM in /var/lib/jenkins/.ssh/ and set permissions).
+
+Test a manual build to confirm it compiles and runs ansible-playbook steps.
+
+GitHub webhook (to automatically trigger Jenkins on push):
+
+In GitHub repo → Settings → Webhooks → Add webhook.
+
+Payload URL: http://<JENKINS_MASTER_PUBLIC_IP>:8080/github-webhook/
+
+Content type: application/json
+
+Select Just the push event (or push + PR if you want).
+
+Save. Make a test commit/push and verify Jenkins picks it up.
+
+Screenshot to take: Jenkins job page showing pipeline stages and green checkmarks; GitHub webhook recent delivery success screenshot.
+
+TASK 8 — Validation and final app verification (what to test & what screenshots to collect)
+
+Push a change to GitHub (edit README and push). This must trigger the webhook → Jenkins should run the pipeline.
+
+Pipeline should go through:
+
+Checkout
+
+Build (Maven) — confirm BUILD SUCCESS
+
+Install Tomcat (Ansible) — confirm success
+
+Deploy WAR (Ansible) — confirm WAR copied to /opt/tomcat/latest/webapps/
+
+Open the application in browser:
+
+http://<APP_NODE_PUBLIC_IP>:8081/<your-app-context>   # depends on WAR name and Tomcat mapping
+
+
+(If Tomcat bound to 8081 in SG and playbooks, use that. If you used 8080, use 8080.)
+
+Take these screenshots (deliverable checklist):
+
+GitHub repo URL (your fork) with code visible.
+
+Terraform apply success and outputs (public IPs).
+
+AWS console EC2 instances list showing surjan-jenkins-master and surjan-app-node.
+
+Jenkins pipeline screen showing all stages successful (console log for the build).
+
+GitHub webhook recent delivery (success status).
+
+Browser screenshot showing the application page (the final app running).
+
+Ansible playbook run logs (install & deploy steps).
+
+Deliverables (what to submit / capture exactly as the exam asked)
+
+Your GitHub repository URL with the application code (your fork).
+
+Terraform code (files under terraform/) plus screenshots showing successful terraform apply output.
+
+Ansible playbooks for Tomcat installation and WAR deployment (ansible/playbooks/install_tomcat.yml and deploy_war.yml).
+
+Jenkinsfile in your GitHub repository (root).
+
+Screenshot of Jenkins pipeline execution with all stages successful.
+
+Screenshot of GitHub webhook triggering the Jenkins build (GitHub → Webhooks → Recent Deliveries).
+
+Screenshot of the final application running in the browser (show app page).
+
+Any extra notes you want to include (e.g., troubleshooting details).
+
+Evaluation Criteria (exact checklist to verify before submitting)
+
+Correctness of Git/GitHub usage (fork, clone, push to your repo).
+
+Working Terraform infrastructure (two EC2s created, security group correct).
+
+Proper configuration of Jenkins (installed, accessible on port 8080, pipeline configured). 
+Jenkins
+
+Accurate Ansible playbooks (Tomcat installed on app node, WAR deployed).
+
+Successful CI/CD pipeline execution (all pipeline stages green: checkout → build → deploy).
+
+Webhook integration (GitHub push triggers Jenkins build; show recent deliveries).
+
+Final application is accessible in the browser (Tomcat served WAR).
+
+Screenshots provided for each of the above deliverables.
+
+Troubleshooting common exam snags (practical tips)
+
+If Terraform apply fails because default VPC is not present: create a VPC and subnet resources in Terraform or modify data.aws_vpc.default to target a specific VPC id.
+
+If ssh fails with Permissions 0644 error on Windows, use Git Bash or run the PowerShell icacls commands shown earlier.
+
+If Jenkins cannot run ansible-playbook, ensure ansible is installed on the Jenkins machine and the Jenkins user can read the private key.
+
+If GitHub webhook shows 403 on delivery, confirm Jenkins is reachable from the internet (no corporate firewall blocking port 8080). For public access, ensure EC2 instance has public IP and SG allows port 8080.
+
+When an AMI name pattern changes, the data.aws_ami filter may need the correct name pattern for the newest jammy images — you can search the Ubuntu Cloud Images locator or use the AWS CLI to verify. 
+Ubuntu Cloud Images
+Ubuntu Documentation
+
+Quick reference commands (copy/paste friendly)
+
+Clone fork:
+
+cd %USERPROFILE%\Downloads
+git clone https://github.com/<github-user>/surjan-addressbook-cicd-project.git
+
+
+Terraform run:
+
+cd terraform
+terraform init
+terraform apply -auto-approve
+terraform output
+
+
+SSH (Windows):
+
+ssh -i "%USERPROFILE%\Downloads\surjan-key.pem" ubuntu@<JENKINS_MASTER_PUBLIC_IP>
+
+
+Install Jenkins & tools (on the instance):
+
+sudo apt update -y
+sudo apt install -y openjdk-17-jdk git maven ansible
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.asc
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list
+sudo apt update -y
+sudo apt install -y jenkins
+sudo systemctl enable --now jenkins
+
+
+Run Ansible from Jenkins server (example):
+
+ansible-playbook -i ansible/inventories/hosts.ini ansible/playbooks/install_tomcat.yml --private-key /var/lib/jenkins/.ssh/surjan-key.pem -u ubuntu
+ansible-playbook -i ansible/inventories/hosts.ini ansible/playbooks/deploy_war.yml --private-key /var/li
+
+
+
+GitHub token: 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
