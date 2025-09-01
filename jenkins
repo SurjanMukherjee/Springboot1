@@ -6,7 +6,7 @@ pipeline {
     }
 
     environment {
-        DOCKER_IMAGE       = "surjan22/nginx-docker"
+        DOCKER_IMAGE       = "surjan22/springboot_app"
         DOCKER_CREDENTIALS = "docker-surjan"
         AWS_CREDS          = "aws-eks-creds"
         AWS_REGION         = "eu-west-2"
