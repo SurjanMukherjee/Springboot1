@@ -10,7 +10,7 @@ pipeline {
         DOCKER_CREDENTIALS = "docker-surjan"
         AWS_CREDS          = "aws-eks"
         AWS_REGION         = "eu-west-2"
-        EKS_CLUSTER        = "team4-eks-cluster"  // Replace with your cluster name
+        EKS_CLUSTER        = "team4-eks-cluster"  // Replace with your cluster nam
         KUBE_NAMESPACE     = "surjan-namespace"
     }
 
