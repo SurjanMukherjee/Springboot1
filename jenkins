@@ -7,10 +7,10 @@ pipeline {
 
     environment {
         DOCKER_IMAGE       = "surjan22/springboot_app"
-        DOCKER_CREDENTIALS = "docker-surjan"
-        AWS_CREDS          = "aws-eks"
+        DOCKER_CREDENTIALS = "docker"
+        AWS_CREDS          = "aws-cred"
         AWS_REGION         = "eu-west-2"
-        EKS_CLUSTER        = "team4-eks-cluster"  // Replace with your cluster nam
+        EKS_CLUSTER        = "devops-nation-cluster"  // Replace with your cluster name
         KUBE_NAMESPACE     = "surjan-namespace"
     }
 
