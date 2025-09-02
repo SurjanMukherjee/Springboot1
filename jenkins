@@ -1,22 +1,20 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_IMAGE = "surjan22/springboot_app:2"
+    }
+
     stages {
         stage('Build with Maven') {
             steps {
-                sh '''
-                  mvn clean package -DskipTests
-                  echo "---- Listing target directory ----"
-                  ls -l target/
-                '''
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                  docker build -t surjan22/springboot_app:2 .
-                '''
+                sh 'docker build -t $DOCKER_IMAGE .'
             }
         }
 
@@ -25,9 +23,28 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'surjan-docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
                       echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                      docker push surjan22/springboot_app:2
+                      docker push $DOCKER_IMAGE
                     '''
                 }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                sh '''
+                  kubectl create namespace team4-surjan-namespace --dry-run=client -o yaml | kubectl apply -f -
+                  kubectl apply -f k8s/deployment.yaml
+                  kubectl apply -f k8s/service.yaml
+                '''
+            }
+        }
+
+        stage('Show Access URL') {
+            steps {
+                sh '''
+                  NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='ExternalIP')].address}")
+                  echo "Access your app at: http://$NODE_IP:30080"
+                '''
             }
         }
     }
