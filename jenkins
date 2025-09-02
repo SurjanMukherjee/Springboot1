@@ -31,7 +31,7 @@ pipeline {
 
         stage('Deploy to EKS') {
     steps {
-        withAWS(credentials: 'aws-cred', region: 'eu-west-2') {
+        withAWS(credentials: 'aws-cred-id', region: 'eu-west-2') {
             sh '''
               aws eks update-kubeconfig --name devops-nation-cluster --region eu-west-2
               kubectl create namespace surjan-namespace --dry-run=client -o yaml | kubectl apply -f -
