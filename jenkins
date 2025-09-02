@@ -7,7 +7,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE       = "surjan22/springboot_app"
-        DOCKER_CREDENTIALS = "docker"          // Jenkins credentialsId for DockerHub
+        DOCKER_CREDENTIALS = "surjan-docker"          // Jenkins credentialsId for DockerHub
         AWS_CREDS          = "aws-cred"        // Jenkins credentialsId for AWS IAM user/role
         AWS_REGION         = "eu-west-2"
         EKS_CLUSTER        = "devops-nation-cluster"  // Replace with your actual cluster name
