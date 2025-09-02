@@ -30,14 +30,17 @@ pipeline {
         }
 
         stage('Deploy to EKS') {
-            steps {
-                sh '''
-                  kubectl create namespace surjan-namespace --dry-run=client -o yaml | kubectl apply -f -
-                  kubectl apply -f k8s/deployment.yaml
-                  kubectl apply -f k8s/service.yaml
-                '''
-            }
+    steps {
+        withAWS(credentials: 'aws-cred', region: 'eu-west-2') {
+            sh '''
+              aws eks update-kubeconfig --name devops-nation-cluster --region eu-west-2
+              kubectl create namespace surjan-namespace --dry-run=client -o yaml | kubectl apply -f -
+              kubectl apply -f k8/deployment.yaml
+              kubectl apply -f k8/service.yaml
+            '''
         }
+    }
+}
 
         stage('Show Access URL') {
             steps {
