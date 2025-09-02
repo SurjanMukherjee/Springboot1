@@ -1,23 +1,16 @@
 pipeline {
     agent any
 
-    tools {
-        maven 'maven'
-    }
-
     environment {
-        DOCKER_IMAGE       = "surjan22/springboot_app"
-        DOCKER_CREDENTIALS = "surjan-docker"          // Jenkins credentialsId for DockerHub
-        AWS_CREDS          = "aws-cred"        // Jenkins credentialsId for AWS IAM user/role
-        AWS_REGION         = "eu-west-2"
-        EKS_CLUSTER        = "devops-nation-cluster"  // Replace with your actual cluster name
-        KUBE_NAMESPACE     = "surjan-namespace"
+        IMAGE_NAME = "surjan22/springboot_app"
+        IMAGE_TAG  = "2"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/SurjanMukherjee/Springboot1.git'
+                git branch: 'main',
+                    url: 'https://github.com/SurjanMukherjee/Springboot1.git'
             }
         }
 
@@ -29,24 +22,20 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
-                    docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
-                '''
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
             }
         }
 
         stage('Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: DOCKER_CREDENTIALS,
+                    credentialsId: 'dockerhub',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                        docker push ${DOCKER_IMAGE}:latest
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                      docker push $IMAGE_NAME:$IMAGE_TAG
                     '''
                 }
             }
@@ -54,39 +43,19 @@ pipeline {
 
         stage('Deploy to EKS') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: "${AWS_CREDS}"]]) {
-                    sh '''
-                        aws configure set default.region "$AWS_REGION"
-                        aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER"
-
-                        kubectl get ns "$KUBE_NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$KUBE_NAMESPACE"
-
-                        # Apply Kubernetes manifests
-                        kubectl apply -n "$KUBE_NAMESPACE" -f k8s/deployment.yaml
-                        kubectl apply -n "$KUBE_NAMESPACE" -f k8s/service.yaml
-
-                        # Get service details
-                        kubectl get svc springboot-service -n "$KUBE_NAMESPACE"
-                    '''
-                }
+                sh '''
+                  kubectl set image deployment/springboot-hello springboot-hello=$IMAGE_NAME:$IMAGE_TAG -n team4-surjan-namespace
+                  kubectl rollout status deployment/springboot-hello -n team4-surjan-namespace
+                '''
             }
         }
 
         stage('Show Access URL') {
             steps {
-                script {
-                    sh '''
-                        NODE_PORT=$(kubectl get svc springboot-service -n ${KUBE_NAMESPACE} -o jsonpath="{.spec.ports[0].nodePort}")
-                        NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='ExternalIP')].address}" | head -n1)
-                        if [ -z "$NODE_IP" ]; then
-                          NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='InternalIP')].address}" | head -n1)
-                        fi
-                        echo "===================================================="
-                        echo "Spring Boot app is available at: http://$NODE_IP:$NODE_PORT"
-                        echo "===================================================="
-                    '''
-                }
+                sh '''
+                  echo "Application is available at:"
+                  kubectl get svc springboot-hello -n team4-surjan-namespace
+                '''
             }
         }
     }
