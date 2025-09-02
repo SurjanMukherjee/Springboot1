@@ -7,10 +7,10 @@ pipeline {
 
     environment {
         DOCKER_IMAGE       = "surjan22/springboot_app"
-        DOCKER_CREDENTIALS = "docker"
-        AWS_CREDS          = "aws-cred"
+        DOCKER_CREDENTIALS = "docker"          // Jenkins credentialsId for DockerHub
+        AWS_CREDS          = "aws-cred"        // Jenkins credentialsId for AWS IAM user/role
         AWS_REGION         = "eu-west-2"
-        EKS_CLUSTER        = "devops-nation-cluster"  // Replace with your cluster name
+        EKS_CLUSTER        = "devops-nation-cluster"  // Replace with your actual cluster name
         KUBE_NAMESPACE     = "surjan-namespace"
     }
 
@@ -62,8 +62,29 @@ pipeline {
 
                         kubectl get ns "$KUBE_NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$KUBE_NAMESPACE"
 
+                        # Apply Kubernetes manifests
                         kubectl apply -n "$KUBE_NAMESPACE" -f k8s/deployment.yaml
                         kubectl apply -n "$KUBE_NAMESPACE" -f k8s/service.yaml
+
+                        # Get service details
+                        kubectl get svc springboot-service -n "$KUBE_NAMESPACE"
+                    '''
+                }
+            }
+        }
+
+        stage('Show Access URL') {
+            steps {
+                script {
+                    sh '''
+                        NODE_PORT=$(kubectl get svc springboot-service -n ${KUBE_NAMESPACE} -o jsonpath="{.spec.ports[0].nodePort}")
+                        NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='ExternalIP')].address}" | head -n1)
+                        if [ -z "$NODE_IP" ]; then
+                          NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='InternalIP')].address}" | head -n1)
+                        fi
+                        echo "===================================================="
+                        echo "Spring Boot app is available at: http://$NODE_IP:$NODE_PORT"
+                        echo "===================================================="
                     '''
                 }
             }
