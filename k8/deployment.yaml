@@ -1,19 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: springboot-app
+  name: springboot-hello
+  namespace: surjan-namespace
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: springboot-app
+      app: springboot-hello
   template:
     metadata:
       labels:
-        app: springboot-app
+        app: springboot-hello
     spec:
       containers:
-      - name: springboot-app
-        image: surjan22/springboot_app:latest
+      - name: springboot-hello
+        image: surjan22/springboot_app:2   # 👈 matches your Docker push
         ports:
         - containerPort: 8080
