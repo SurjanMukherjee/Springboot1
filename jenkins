@@ -31,16 +31,28 @@ pipeline {
 
         stage('Deploy to EKS') {
     steps {
-        withAWS(credentials: 'aws-cred-id', region: 'eu-west-2') {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
+                          credentialsId: 'aws-cred-id']]) {
             sh '''
+              # Configure AWS CLI
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+              aws configure set region eu-west-2
+
+              # Update kubeconfig for your cluster
               aws eks update-kubeconfig --name devops-nation-cluster --region eu-west-2
+
+              # Create namespace if not already exists
               kubectl create namespace surjan-namespace --dry-run=client -o yaml | kubectl apply -f -
-              kubectl apply -f k8/deployment.yaml
-              kubectl apply -f k8/service.yaml
+
+              # Deploy Spring Boot app
+              kubectl apply -f k8/deployment.yaml -n surjan-namespace
+              kubectl apply -f k8/service.yaml -n surjan-namespace
             '''
         }
     }
 }
+
 
         stage('Show Access URL') {
             steps {
