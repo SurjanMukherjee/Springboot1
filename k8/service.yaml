@@ -2,11 +2,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: springboot-service
+  labels:
+    app: springboot
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
-    app: springboot-app
+    app: springboot
   ports:
-    - protocol: TCP
-      port: 80
+    - port: 8080
       targetPort: 8080
+      nodePort: 30080   # must be between 30000–32767
